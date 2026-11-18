@@ -1,3 +1,11 @@
+# SQLite fix for Linux servers (Streamlit Cloud). Harmless on Windows.
+try:
+    __import__("pysqlite3")
+    import sys
+    sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+except ImportError:
+    pass
+
 import io
 import sys
 import time
@@ -11,8 +19,14 @@ import streamlit as st
 from pypdf import PdfReader
 from pipeline import build_retriever, build_chain_engine, build_graph_engine
 
+# Total pages allowed across all uploaded files
 MAX_PAGES = 100
+
+# Height (px) of the scrolling chat box. Lower it if your screen is short,
+# raise it if you have room, so the whole app fits without page scrolling.
 CHAT_HEIGHT = 360
+
+# App name: the logo shows MAIN in white and ACCENT in blue
 APP_NAME_MAIN = "Docu"
 APP_NAME_ACCENT = "Mind"
 
@@ -64,8 +78,17 @@ html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
     max-width: 960px !important;
 }
 header[data-testid="stHeader"] {background: transparent !important; height: 2.4rem !important;}
+
+/* Hide Streamlit's menu, footer and deploy button, but keep the sidebar arrows */
 #MainMenu, footer, [data-testid="stDecoration"], [data-testid="stStatusWidget"],
-[data-testid="stToolbar"] {visibility: hidden !important;}
+[data-testid="stMainMenu"], [data-testid="stAppDeployButton"], .stDeployButton {
+    visibility: hidden !important;
+}
+[data-testid="stExpandSidebarButton"], [data-testid="collapsedControl"],
+[data-testid="stSidebarCollapseButton"] {
+    visibility: visible !important;
+    color: var(--text) !important;
+}
 
 [data-testid="stCaptionContainer"], small {color: var(--muted) !important;}
 h1, h2, h3, h4 {color: var(--text) !important;}

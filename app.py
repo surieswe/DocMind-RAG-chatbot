@@ -7,7 +7,6 @@ except ImportError:
     pass
 
 import io
-import os
 import sys
 import time
 import html
@@ -422,9 +421,6 @@ def render_message(msg: dict):
 # Sidebar
 # ------------------------------------------------------------------
 with st.sidebar:
-    # TEMP DEBUG: confirms the API key reached the app (prints True/False only)
-    st.caption(f"API key loaded: {bool(os.getenv('GOOGLE_API_KEY'))}")
-
     st.markdown('<div class="pv-label">01 · Upload documents</div>', unsafe_allow_html=True)
     st.markdown(
         f'<div class="pv-note">Up to <b>{MAX_PAGES} pages</b> in total. PDF or TXT.</div>',
@@ -492,7 +488,6 @@ with st.sidebar:
                 st.session_state.docs_info = None
                 status.update(label="Processing failed", state="error")
                 st.error(friendly_error(e))
-                st.exception(e)  # TEMP DEBUG: shows the full error. Remove when fixed.
 
     info = st.session_state.docs_info
     if info and st.session_state.retriever:

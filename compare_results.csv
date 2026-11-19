@@ -1,0 +1,9 @@
+question,kind,top_score,gate_fires,chain_ok,graph_ok,chain_time,graph_time,chain_answer,graph_answer
+How many days of paid leave does an employee get per year?,in,0.697,False,True,True,3.15,2.85,"Every full-time employee receives 18 days of paid leave per year, made up of 12 days of casual leave and 6 days of sick leave.","Every full-time employee receives 18 days of paid leave per year, made up of 12 days of casual leave and 6 days of sick leave."
+What is the notice period for interns?,in,0.715,False,True,True,4.07,2.76,The notice period for interns is 15 days.,The notice period for interns is 15 days.
+How much is the yearly learning budget?,in,0.653,False,True,True,2.9,2.02,"The yearly learning budget is Rs. 20,000 per employee.","The yearly learning budget is Rs. 20,000 per employee."
+Who is the HR head?,in,0.663,False,True,True,4.77,1.92,The HR head is Ms. Meena Raghavan.,The HR head is Ms. Meena Raghavan.
+How many weeks is maternity leave?,in,0.632,False,True,True,2.31,3.58,Maternity leave is 26 weeks for the first two children.,Maternity leave is 26 weeks for the first two children.
+What is the company's stock price?,out,0.57,False,True,True,3.14,2.15,I couldn't find that in the documents.,I couldn't find that in the documents.
+Does Orbit Tech offer a pet insurance policy?,out,0.684,False,True,True,2.33,2.14,I couldn't find that in the documents.,I couldn't find that in the documents.
+What is the capital of France?,out,0.538,True,True,True,2.04,0.83,I couldn't find that in the documents.,I couldn't find that in the documents.

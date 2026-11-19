@@ -16,8 +16,15 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent / "src"))
 
 import streamlit as st
+import streamlit.components.v1 as components
 from pypdf import PdfReader
-from pipeline import build_retriever, build_chain_engine, build_graph_engine
+from pipeline import (
+    SCORE_THRESHOLD,
+    build_retriever,
+    build_chain_engine,
+    build_graph_engine,
+)
+from config import GOOGLE_API_KEY
 
 # Total pages allowed across all uploaded files
 MAX_PAGES = 100
@@ -143,7 +150,7 @@ hr, [data-testid="stDivider"] {border-color: var(--line) !important; margin: .6r
 /* ---------- How-it-works cards ---------- */
 .pv-card {
     background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
-    padding: 1rem 1rem; min-height: 128px;
+    padding: 1rem 1rem; min-height: 150px;
     transition: transform .25s cubic-bezier(.2,.7,.2,1), border-color .25s, background .25s;
     animation: fadeUp .55s cubic-bezier(.2,.7,.2,1) both;
 }
@@ -151,6 +158,11 @@ hr, [data-testid="stDivider"] {border-color: var(--line) !important; margin: .6r
 .pv-card .num {font-size: 1.4rem; font-weight: 800; color: var(--blue); margin-bottom: .25rem; line-height: 1;}
 .pv-card h4 {font-size: 1rem !important; font-weight: 700 !important; margin: 0 0 .25rem 0 !important; padding: 0 !important;}
 .pv-card p {font-size: .86rem; color: var(--muted); line-height: 1.45; margin: 0;}
+
+/* Clickable Upload card */
+.pv-card-upload {cursor: pointer;}
+.pv-card-upload:focus-visible {outline: 2px solid var(--blue); outline-offset: 2px;}
+.pv-card-hint {margin-top: .5rem; font-size: .78rem; font-weight: 700; color: var(--blue);}
 
 .pv-tip {
     margin-top: .8rem; font-size: .84rem; color: var(--muted);
@@ -212,7 +224,7 @@ hr, [data-testid="stDivider"] {border-color: var(--line) !important; margin: .6r
     border: 1px solid var(--line) !important; border-radius: 6px !important;
 }
 
-/* Engine segmented control */
+/* Engine segmented control (3 options) */
 [data-testid="stSidebar"] div[role="radiogroup"] {
     background: var(--bg); border: 1px solid var(--line);
     padding: 4px; border-radius: 10px; gap: 4px !important;
@@ -220,11 +232,12 @@ hr, [data-testid="stDivider"] {border-color: var(--line) !important; margin: .6r
 }
 [data-testid="stSidebar"] div[role="radiogroup"] > label {
     flex: 1; justify-content: center; border-radius: 7px;
-    padding: .35rem .4rem !important; margin: 0 !important; transition: background .2s;
+    padding: .35rem .2rem !important; margin: 0 !important; transition: background .2s;
 }
 [data-testid="stSidebar"] div[role="radiogroup"] > label > div:first-child {display: none;}
 [data-testid="stSidebar"] div[role="radiogroup"] > label p {
-    font-weight: 700 !important; font-size: .85rem !important; color: var(--muted) !important;
+    font-weight: 700 !important; font-size: .76rem !important; color: var(--muted) !important;
+    white-space: nowrap;
 }
 [data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) {background: var(--blue);}
 [data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) p {color: var(--on-blue) !important;}
@@ -353,6 +366,8 @@ ENGINES = {
     "LangGraph": "Checks whether your documents really contain the answer, and says "
                  "'not found' instead of guessing.",
     "LangChain": "Simple retrieve-then-answer pipeline. Always answers from the closest passages.",
+    "Compare": "Runs both engines on your question and shows the answers side by side, "
+               "with time and similarity score. Uses 2 model calls per question.",
 }
 
 STARTERS = [
@@ -399,6 +414,27 @@ def count_pages(f) -> int:
     return max(1, math.ceil(len(data) / 3000))
 
 
+def run_engine(build, question: str):
+    """Run one engine. Returns (answer, seconds, had_error)."""
+    start = time.perf_counter()
+    try:
+        answer = build(st.session_state.retriever)(question)
+        return answer, time.perf_counter() - start, False
+    except Exception as e:
+        return friendly_error(e), time.perf_counter() - start, True
+
+
+def best_similarity(question: str):
+    """Similarity of the best matching chunk (what the LangGraph gate checks)."""
+    try:
+        scored = st.session_state.retriever.vectorstore.similarity_search_with_relevance_scores(
+            question, k=4
+        )
+        return max((s for _, s in scored), default=0.0)
+    except Exception:
+        return None
+
+
 def user_bubble(text: str):
     safe = html.escape(text).replace("\n", "<br>")
     st.markdown(
@@ -407,20 +443,43 @@ def user_bubble(text: str):
     )
 
 
+def render_compare(c: dict):
+    """Two answers side by side, with time and similarity info."""
+    cols = st.columns(2)
+    for col, key, label in ((cols[0], "chain", "LangChain"), (cols[1], "graph", "LangGraph")):
+        with col:
+            st.markdown(f"**{label}**\n\n{c[key]['answer']}")
+            note = f"{c[key]['time']:.1f}s"
+            if key == "graph" and c.get("gated"):
+                note += " · skipped the model (low similarity)"
+            st.caption(note)
+    if c.get("score") is not None:
+        st.caption(
+            f"Best chunk similarity: {c['score']:.2f} · "
+            f"LangGraph threshold: {SCORE_THRESHOLD}"
+        )
+
+
 def render_message(msg: dict):
     if msg["role"] == "user":
         user_bubble(msg["content"])
     else:
         with st.chat_message("assistant", avatar="📄"):
-            st.markdown(msg["content"])
-            if msg.get("meta"):
-                st.caption(msg["meta"])
+            if msg.get("compare"):
+                render_compare(msg["compare"])
+            else:
+                st.markdown(msg["content"])
+                if msg.get("meta"):
+                    st.caption(msg["meta"])
 
 
 # ------------------------------------------------------------------
 # Sidebar
 # ------------------------------------------------------------------
 with st.sidebar:
+    # TEMP DEBUG: confirms the API key reached the app (prints True/False only)
+    st.caption(f"API key loaded: {bool(GOOGLE_API_KEY)}")
+
     st.markdown('<div class="pv-label">01 · Upload documents</div>', unsafe_allow_html=True)
     st.markdown(
         f'<div class="pv-note">Up to <b>{MAX_PAGES} pages</b> in total. PDF or TXT.</div>',
@@ -488,6 +547,7 @@ with st.sidebar:
                 st.session_state.docs_info = None
                 status.update(label="Processing failed", state="error")
                 st.error(friendly_error(e))
+                st.exception(e)  # TEMP DEBUG: shows the full error. Remove when fixed.
 
     info = st.session_state.docs_info
     if info and st.session_state.retriever:
@@ -545,11 +605,54 @@ if not ready:
         ("03", "Ask", "Chat in plain language and get answers from your own content."),
     ]
     for col, (num, title, text) in zip(cols, steps):
+        is_upload = num == "01"
+        cls = "pv-card pv-card-upload" if is_upload else "pv-card"
+        attrs = ' role="button" tabindex="0"' if is_upload else ""
+        hint = '<div class="pv-card-hint">Click to choose files →</div>' if is_upload else ""
         col.markdown(
-            f"""<div class="pv-card"><div class="num">{num}</div>
-            <h4>{title}</h4><p>{text}</p></div>""",
+            f"""<div class="{cls}"{attrs}><div class="num">{num}</div>
+            <h4>{title}</h4><p>{text}</p>{hint}</div>""",
             unsafe_allow_html=True,
         )
+
+    # Invisible script: clicking the Upload card opens the file picker
+    components.html(
+        """
+        <script>
+        const doc = window.parent.document;
+        if (!window.parent.__uploadCardBound) {
+            window.parent.__uploadCardBound = true;
+
+            function openPicker() {
+                // Open the sidebar first if it is collapsed
+                const expand = doc.querySelector(
+                    '[data-testid="stExpandSidebarButton"], [data-testid="collapsedControl"]'
+                );
+                if (expand) expand.click();
+                setTimeout(function () {
+                    const input =
+                        doc.querySelector('[data-testid="stFileUploaderDropzone"] input[type="file"]') ||
+                        doc.querySelector('input[type="file"]');
+                    if (input) input.click();
+                }, 250);
+            }
+
+            doc.addEventListener("click", function (e) {
+                if (e.target.closest(".pv-card-upload")) openPicker();
+            });
+            doc.addEventListener("keydown", function (e) {
+                if ((e.key === "Enter" || e.key === " ") && e.target.closest &&
+                    e.target.closest(".pv-card-upload")) {
+                    e.preventDefault();
+                    openPicker();
+                }
+            });
+        }
+        </script>
+        """,
+        height=0,
+    )
+
     st.markdown(
         '<div class="pv-tip">Tip: text-based PDFs work best. Scanned pages without a text layer can\'t be read.</div>',
         unsafe_allow_html=True,
@@ -600,24 +703,36 @@ with chat_box:
         user_bubble(question)
 
         with st.chat_message("assistant", avatar="📄"):
-            start = time.perf_counter()
-            error = False
-            with st.spinner("Searching your documents..."):
-                try:
-                    build = build_graph_engine if engine_name == "LangGraph" else build_chain_engine
-                    ask = build(st.session_state.retriever)
-                    answer = ask(question)
-                except Exception as e:
-                    answer = friendly_error(e)
-                    error = True
-            elapsed = time.perf_counter() - start
-
-            if error:
-                st.markdown(answer)
-                meta = None
+            if engine_name == "Compare":
+                # ---- run both engines and show the answers side by side ----
+                with st.spinner("Running both engines..."):
+                    score = best_similarity(question)
+                    chain_answer, chain_time, _ = run_engine(build_chain_engine, question)
+                    graph_answer, graph_time, _ = run_engine(build_graph_engine, question)
+                compare = {
+                    "chain": {"answer": chain_answer, "time": chain_time},
+                    "graph": {"answer": graph_answer, "time": graph_time},
+                    "score": score,
+                    "gated": score is not None and score < SCORE_THRESHOLD,
+                }
+                render_compare(compare)
+                st.session_state.messages.append(
+                    {"role": "assistant", "content": "", "compare": compare}
+                )
             else:
-                st.write_stream(stream_text(answer))
-                meta = f"{engine_name} · answered in {elapsed:.1f}s"
-                st.caption(meta)
+                # ---- single engine, with the typing effect ----
+                build = build_graph_engine if engine_name == "LangGraph" else build_chain_engine
+                with st.spinner("Searching your documents..."):
+                    answer, elapsed, error = run_engine(build, question)
 
-        st.session_state.messages.append({"role": "assistant", "content": answer, "meta": meta})
+                if error:
+                    st.markdown(answer)
+                    meta = None
+                else:
+                    st.write_stream(stream_text(answer))
+                    meta = f"{engine_name} · answered in {elapsed:.1f}s"
+                    st.caption(meta)
+
+                st.session_state.messages.append(
+                    {"role": "assistant", "content": answer, "meta": meta}
+                )

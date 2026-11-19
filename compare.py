@@ -1,22 +1,3 @@
-"""
-Compare the LangChain and LangGraph engines on ANY document and ANY questions.
-
-Run from the project root (where app.py is), with your venv active:
-
-    python compare.py --pdf data/MyDoc.pdf --questions my_questions.json
-    python compare.py --pdf a.pdf --pdf b.pdf --questions q.csv --repeats 3 --pause 6
-
-Questions file (JSON list or CSV):
-    JSON: [{"question": "...", "kind": "in"|"out", "keywords": ["18"], "gold": "optional text"}, ...]
-    CSV : question,kind,keywords,gold        (keywords separated with |)
-  kind "in"  -> the document contains the answer; every keyword must appear in the answer
-  kind "out" -> the document does NOT contain it; a good engine says "not found"
-  gold       -> optional text that should appear in a retrieved chunk (gives Hit@k)
-
-Each question makes 2 model calls per repeat (one per engine). Results are saved to
-compare_results.csv (per question) and compare_summary.md (metrics table).
-"""
-
 import argparse
 import csv
 import io
